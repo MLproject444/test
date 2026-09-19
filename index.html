@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enterprise EMR - Clinical Decision Support</title>
+    <!-- Professional Typography -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        :root {
+            /* Clinical Light Theme */
+            --bg-body: #f1f5f9;
+            --bg-panel: #ffffff;
+            --border-color: #e2e8f0;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --input-bg: #f8fafc;
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            
+            /* Status Colors */
+            --risk-low: #059669;
+            --risk-low-bg: #d1fae5;
+            --risk-mod: #d97706;
+            --risk-mod-bg: #fef3c7;
+            --risk-high: #dc2626;
+            --risk-high-bg: #fee2e2;
+
+            /* Dynamic Active State */
+            --active-color: var(--primary);
+            --active-bg: #eff6ff;
+        }
+
+        [data-theme="dark"] {
+            /* Clinical Dark Theme */
+            --bg-body: #020617;
+            --bg-panel: #0f172a;
+            --border-color: #1e293b;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --input-bg: #1e293b;
+            --primary: #3b82f6;
+            --primary-hover: #60a5fa;
+            
+            --risk-low-bg: rgba(5, 150, 105, 0.15);
+            --risk-mod-bg: rgba(217, 119, 6, 0.15);
+            --risk-high-bg: rgba(220, 38, 38, 0.15);
+            --active-bg: rgba(59, 130, 246, 0.1);
+        }
+
+        /* Dynamic Classes based on risk score */
+        body.theme-risk-low { --active-color: var(--risk-low); --active-bg: var(--risk-low-bg); }
+        body.theme-risk-moderate { --active-color: var(--risk-mod); --active-bg: var(--risk-mod-bg); }
+        body.theme-risk-high { --active-color: var(--risk-high); --active-bg: var(--risk-high-bg); }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            padding: 2rem;
+            transition: all 0.3s ease;
+        }
+
+        /* Tech Grid Background */
+        #telemetry-canvas {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            z-index: 0;
+            pointer-events: none;
+            opacity: 0.4;
+        }
+
+        .emr-container {
+            width: 100%;
+            max-width: 1200px;
+            position: relative;
+            z-index: 1;
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 1.5rem;
+        }
+
+        @media (min-width: 992px) {
+            .emr-container { grid-template-columns: 1fr 1fr; }
+            .header-nav { grid-column: span 2; }
+        }
+
+        /* Header Navigation */
+        .header-nav {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1rem 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+        }
+
+        .logo {
+            font-size: 1.25rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: var(--active-color);
+        }
+
+        .controls { display: flex; gap: 1rem; }
+        .icon-btn {
+            background: var(--bg-body);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            width: 40px; height: 40px;
+            border-radius: 8px;
+            display: flex; justify-content: center; align-items: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .icon-btn:hover { background: var(--border-color); }
+
+        /* Panels */
+        .panel {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+        }
+
+        .panel-header {
+            margin-bottom: 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 1rem;
+        }
+        .panel-header h2 { font-size: 1.1rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); }
+
+        /* Form Layout */
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1.25rem;
+        }
+        .form-group-full { grid-column: span 2; }
+
+        .label-wrapper { display: flex; justify-content: space-between; margin-bottom: 0.4rem; font-size: 0.85rem; }
+        .label-wrapper label { font-weight: 600; color: var(--text-main); }
+        .label-wrapper span { color: var(--text-muted); font-size: 0.75rem; }
+
+        input, select {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: var(--input-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-main);
+            font-family: 'Inter', sans-serif;
+            font-size: 0.95rem;
+            transition: border-color 0.2s;
+        }
+        input:focus, select:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+
+        /* Presets */
+        .presets {
+            display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.5rem;
+        }
+        .preset-badge {
+            font-size: 0.75rem; font-weight: 600;
+            padding: 0.4rem 0.8rem;
+            background: var(--bg-body); border: 1px solid var(--border-color);
+            border-radius: 6px; cursor: pointer; color: var(--text-muted);
+        }
+        .preset-badge:hover { background: var(--active-bg); color: var(--active-color); border-color: var(--active-color); }
+
+        .btn-submit {
+            grid-column: span 2;
+            background: var(--primary); color: white;
+            border: none; padding: 1rem; border-radius: 8px;
+            font-size: 1rem; font-weight: 600;
+            cursor: pointer; transition: background 0.2s;
+            display: flex; justify-content: center; align-items: center; gap: 0.5rem;
+        }
+        .btn-submit:hover { background: var(--primary-hover); }
+
+        /* Results Visualization */
+        .score-display {
+            text-align: center;
+            margin-bottom: 2rem;
+            padding: 2rem;
+            background: var(--active-bg);
+            border-radius: 12px;
+            border: 1px solid var(--active-color);
+            transition: all 0.3s;
+        }
+        .score-number { font-size: 4rem; font-weight: 700; color: var(--active-color); font-family: 'Space Mono', monospace; line-height: 1; margin-bottom: 0.5rem; }
+        .score-label { font-size: 1.1rem; font-weight: 600; color: var(--text-main); }
+        .score-sub { font-size: 0.85rem; color: var(--text-muted); margin-top: 0.25rem; }
+
+        /* Animated Progress Bars */
+        .model-list { display: flex; flex-direction: column; gap: 1.25rem; margin-bottom: 2rem; }
+        .model-item { width: 100%; }
+        .model-header { display: flex; justify-content: space-between; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem; }
+        
+        .progress-track {
+            width: 100%; height: 10px;
+            background: var(--border-color);
+            border-radius: 10px; overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%; width: 0%;
+            background: var(--active-color);
+            border-radius: 10px;
+            transition: width 1s cubic-bezier(0.4, 0, 0.2, 1), background 0.3s;
+        }
+
+        .btn-receipt {
+            width: 100%; background: transparent;
+            color: var(--active-color); border: 2px solid var(--active-color);
+            padding: 1rem; border-radius: 8px; font-weight: 600;
+            cursor: pointer; display: flex; justify-content: center; align-items: center; gap: 0.5rem;
+            transition: all 0.2s;
+        }
+        .btn-receipt:hover { background: var(--active-color); color: white; }
+
+        /* --- OFFICIAL PDF RECEIPT STYLING --- */
+        .pdf-overlay {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0,0,0,0.8); backdrop-filter: blur(8px);
+            z-index: 100; display: none; justify-content: center; padding: 2rem; overflow-y: auto;
+        }
+        .pdf-document {
+            background: #ffffff; color: #000000;
+            width: 100%; max-width: 800px;
+            padding: 3rem; margin: auto;
+            border-top: 12px solid var(--active-color);
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
+        }
+        .pdf-header { display: flex; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 1rem; margin-bottom: 1.5rem; }
+        .pdf-h-left h1 { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 0.25rem; }
+        .pdf-h-left p { font-size: 0.8rem; color: #555; text-transform: uppercase; }
+        .pdf-h-right { text-align: right; font-family: 'Space Mono', monospace; font-size: 0.85rem; }
+        
+        .patient-dossier { background: #f8f9fa; border: 1px solid #dee2e6; padding: 1.5rem; margin-bottom: 2rem; display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+        .dossier-item { font-size: 0.9rem; }
+        .dossier-item strong { color: #555; display: inline-block; width: 120px; text-transform: uppercase; font-size: 0.75rem; }
+        
+        .pdf-table { width: 100%; border-collapse: collapse; margin-bottom: 2rem; font-size: 0.85rem; }
+        .pdf-table th { text-align: left; background: #343a40; color: white; padding: 0.75rem; text-transform: uppercase; letter-spacing: 1px; font-size: 0.7rem; }
+        .pdf-table td { padding: 0.75rem; border-bottom: 1px solid #dee2e6; }
+        .pdf-table tr:nth-child(even) { background: #f8f9fa; }
+        
+        .pdf-footer { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 3rem; border-top: 1px solid #dee2e6; padding-top: 1rem; }
+        .barcode-area i { font-size: 2.5rem; }
+        .barcode-area p { font-family: 'Space Mono', monospace; font-size: 0.7rem; margin-top: 0.2rem; }
+        .sign-area { text-align: center; }
+        .sign-line { width: 200px; border-bottom: 1px solid #000; margin-bottom: 0.5rem; height: 40px; }
+        .sign-area p { font-size: 0.8rem; font-weight: 600; }
+
+        .modal-actions { display: flex; gap: 1rem; position: sticky; bottom: 2rem; max-width: 800px; margin: 1rem auto 0; }
+        .btn-action { flex: 1; padding: 1rem; font-weight: 600; border: none; cursor: pointer; border-radius: 8px; }
+        .btn-print { background: #2563eb; color: white; }
+        .btn-close { background: #e2e8f0; color: #0f172a; }
+
+        /* Print Engine - Hides UI, formats document specifically for A4 paper */
+        @media print {
+            body { background: white !important; padding: 0 !important; margin: 0 !important; }
+            #telemetry-canvas, .emr-container, .modal-actions { display: none !important; }
+            .pdf-overlay { position: relative; background: none; display: block !important; padding: 0; }
+            .pdf-document { box-shadow: none; border: none; max-width: 100%; padding: 0; border-top: 6px solid #000; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Dynamic Telemetry Background -->
+    <canvas id="telemetry-canvas"></canvas>
+
+    <div class="emr-container">
+        <!-- Top Navigation -->
+        <header class="header-nav">
+            <div class="logo">
+                <i class="fa-solid fa-hospital"></i> Enterprise Clinical EMR
+            </div>
+            <div class="controls">
+                <button class="icon-btn" onclick="toggleAudio()" id="audio-btn" title="Toggle Heartbeat Monitor">
+                    <i class="fa-solid fa-volume-xmark"></i>
+                </button>
+                <button class="icon-btn" onclick="toggleTheme()" id="theme-btn" title="Toggle Dark Mode">
+                    <i class="fa-solid fa-moon"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- Demographics & Metrics Panel -->
+        <section class="panel">
+            <div class="panel-header">
+                <h2>Patient Diagnostics Entry</h2>
+            </div>
+
+            <!-- Quick Presets -->
+            <div class="presets">
+                <span class="preset-badge" onclick="loadPreset('jdoe')">Load: John Doe (Healthy)</span>
+                <span class="preset-badge" onclick="loadPreset('msmith')">Load: Mary Smith (Diabetic Marker)</span>
+                <span class="preset-badge" onclick="loadPreset('rcruz')">Load: Robert Cruz (Critical)</span>
+            </div>
+
+            <form id="emr-form" onsubmit="event.preventDefault(); evaluateRisk();">
+                <div class="form-grid">
+                    <!-- Demographics -->
+                    <div class="form-group-full label-wrapper">
+                        <label for="pName">Patient Full Name</label>
+                    </div>
+                    <div class="form-group-full" style="margin-top:-1rem">
+                        <input type="text" id="pName" placeholder="e.g. Jane Doe" required>
+                    </div>
+
+                    <div>
+                        <div class="label-wrapper"><label for="pSex">Biological Sex</label></div>
+                        <select id="pSex" required>
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <div class="label-wrapper"><label for="age">Age</label><span>Years</span></div>
+                        <input type="number" id="age" min="1" max="120" placeholder="45" required>
+                    </div>
+
+                    <!-- Vitals -->
+                    <div>
+                        <div class="label-wrapper"><label for="bmi">BMI</label><span>kg/m²</span></div>
+                        <input type="number" step="0.1" id="bmi" min="10" max="60" placeholder="24.5" required>
+                    </div>
+
+                    <div>
+                        <div class="label-wrapper"><label for="bp">Systolic BP</label><span>mmHg</span></div>
+                        <input type="number" id="bp" min="60" max="250" placeholder="120" required>
+                    </div>
+
+                    <!-- Labs -->
+                    <div>
+                        <div class="label-wrapper"><label for="chol">Serum Chol.</label><span>mg/dL</span></div>
+                        <input type="number" id="chol" min="100" max="500" placeholder="190" required>
+                    </div>
+
+                    <div>
+                        <div class="label-wrapper"><label for="glu">Fasting Glu.</label><span>mg/dL</span></div>
+                        <input type="number" id="glu" min="50" max="400" placeholder="95" required>
+                    </div>
+
+                    <!-- Symptoms -->
+                    <div class="form-group-full">
+                        <div class="label-wrapper"><label for="symptom">Reported Symptom</label></div>
+                        <select id="symptom">
+                            <option value="none">Asymptomatic (None)</option>
+                            <option value="chest_pain">Acute Chest Pain</option>
+                            <option value="shortness_breath">Shortness of Breath</option>
+                            <option value="frequent_urination">Frequent Urination</option>
+                            <option value="dizziness">Dizziness / Syncope</option>
+                        </select>
+                    </div>
+
+                    <button type="submit" class="btn-submit">
+                        <i class="fa-solid fa-microchip"></i> Run ML Analytics
+                    </button>
+                </div>
+            </form>
+        </section>
+
+        <!-- ML Output Panel -->
+        <section class="panel">
+            <div class="panel-header">
+                <h2>Diagnostic Results Engine</h2>
+            </div>
+
+            <div class="score-display">
+                <div class="score-number" id="main-score">--%</div>
+                <div class="score-label" id="main-status">Awaiting Patient Data</div>
+                <div class="score-sub" id="main-disease">Run evaluation to view indicators</div>
+            </div>
+
+            <!-- Model Progress Bars -->
+            <div class="model-list">
+                <div class="model-item">
+                    <div class="model-header">
+                        <span>Logistic Regression Model</span>
+                        <span id="txt-log" style="font-family: 'Space Mono';">--%</span>
+                    </div>
+                    <div class="progress-track"><div class="progress-fill" id="bar-log"></div></div>
+                </div>
+
+                <div class="model-item">
+                    <div class="model-header">
+                        <span>Random Forest Classifier</span>
+                        <span id="txt-rf" style="font-family: 'Space Mono';">--%</span>
+                    </div>
+                    <div class="progress-track"><div class="progress-fill" id="bar-rf"></div></div>
+                </div>
+
+                <div class="model-item">
+                    <div class="model-header">
+                        <span>Decision Tree Output</span>
+                        <span id="txt-dt" style="color: var(--active-color);">--</span>
+                    </div>
+                    <!-- Empty track just for visual consistency -->
+                    <div class="progress-track" style="height: 2px;"></div> 
+                </div>
+            </div>
+
+            <button class="btn-receipt" onclick="openPDF()">
+                <i class="fa-solid fa-file-pdf"></i> Generate Clinical PDF Report
+            </button>
+        </section>
+    </div>
+
+    <!-- PDF Printable Document Modal -->
+    <div class="pdf-overlay" id="pdf-modal">
+        <div>
+            <div class="pdf-document" id="printable-doc">
+                <div class="pdf-header">
+                    <div class="pdf-h-left">
+                        <h1>ACP MR ENTERPRISE HEALTH</h1>
+                        <p>Department of Cardiology • Automated Clinical Diagnostics</p>
+                    </div>
+                    <div class="pdf-h-right">
+                        <strong style="color: #000; font-size:1.1rem;" id="doc-id">RPT-000000</strong><br>
+                        Date: <span id="doc-date">YYYY-MM-DD</span><br>
+                        Time: <span id="doc-time">00:00:00</span>
+                    </div>
+                </div>
+
+                <!-- Patient Dossier -->
+                <div class="patient-dossier">
+                    <div class="dossier-item"><strong>Patient Name:</strong> <span id="doc-name">--</span></div>
+                    <div class="dossier-item"><strong>Patient Age:</strong> <span id="doc-age">--</span> YRS</div>
+                    <div class="dossier-item"><strong>Biological Sex:</strong> <span id="doc-sex">--</span></div>
+                    <div class="dossier-item"><strong>Chart ID:</strong> MRN-<script>document.write(Math.floor(Math.random() * 9000000 + 1000000))</script></div>
+                </div>
+
+                <h3 style="font-size: 0.9rem; text-transform: uppercase; margin-bottom: 0.5rem;">I. Clinical Vitals & Labs</h3>
+                <table class="pdf-table">
+                    <thead>
+                        <tr>
+                            <th>Parameter</th>
+                            <th>Recorded Value</th>
+                            <th>Reference Range</th>
+                            <th>Flag</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Body Mass Index</td>
+                            <td id="doc-bmi">--</td>
+                            <td>18.5 - 24.9 kg/m²</td>
+                            <td id="flag-bmi">--</td>
+                        </tr>
+                        <tr>
+                            <td>Systolic BP</td>
+                            <td id="doc-bp">--</td>
+                            <td>90 - 120 mmHg</td>
+                            <td id="flag-bp">--</td>
+                        </tr>
+                        <tr>
+                            <td>Serum Cholesterol</td>
+                            <td id="doc-chol">--</td>
+                            <td>< 200 mg/dL</td>
+                            <td id="flag-chol">--</td>
+                        </tr>
+                        <tr>
+                            <td>Fasting Glucose</td>
+                            <td id="doc-glu">--</td>
+                            <td>70 - 99 mg/dL</td>
+                            <td id="flag-glu">--</td>
+                        </tr>
+                        <tr>
+                            <td>Primary Symptom</td>
+                            <td id="doc-sym" style="text-transform: capitalize;">--</td>
+                            <td>N/A</td>
+                            <td>Observed</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3 style="font-size: 0.9rem; text-transform: uppercase; margin-bottom: 0.5rem; margin-top: 1rem;">II. Machine Learning Diagnostics</h3>
+                <table class="pdf-table">
+                    <thead>
+                        <tr>
+                            <th>Algorithm</th>
+                            <th>Prediction Output</th>
+                            <th>Confidence</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Logistic Regression (Logit)</td>
+                            <td id="doc-m-log">--%</td>
+                            <td>High</td>
+                        </tr>
+                        <tr>
+                            <td>Random Forest Ensemble</td>
+                            <td id="doc-m-rf">--%</td>
+                            <td>High</td>
+                        </tr>
+                        <tr>
+                            <td>Decision Tree Classifier</td>
+                            <td id="doc-m-dt">--</td>
+                            <td>Moderate</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div style="background: #e0f2fe; border: 1px solid #bae6fd; padding: 1.5rem; border-radius: 4px;">
+                    <div style="text-transform: uppercase; font-size: 0.75rem; color: #0284c7; font-weight: 700; margin-bottom: 0.5rem;">Diagnostic Conclusion</div>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <div style="font-size: 1.4rem; font-weight: 800; color: #0369a1;" id="doc-conclusion">--</div>
+                            <div style="font-size: 0.9rem; color: #0c4a6e;" id="doc-disease">--</div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="font-size: 2.5rem; font-weight: 800; color: #0284c7; font-family: 'Space Mono', monospace;" id="doc-final-score">--%</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pdf-footer">
+                    <div class="barcode-area">
+                        <i class="fa-solid fa-barcode"></i>
+                        <p>SECURE-E-SIGNATURE-VERIFIED</p>
+                        <p style="font-size: 0.55rem; color: #999;">Not valid for legal proceedings without wet signature.</p>
+                    </div>
+                    <div class="sign-area">
+                        <div class="sign-line">
+                            <!-- Digital Signature mockup via CSS pseudo-element or just text for print -->
+                            <span style="font-family: 'Brush Script MT', cursive; font-size: 1.2rem; color: #000080;">Dr. Salunke & Assist. Tarika</span>
+                        </div>
+                        <p>Attending Physician</p>
+                        <p style="font-size: 0.7rem; color: #666;">Chief of Diagnostic Medicine</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn-action btn-close" onclick="closePDF()">Cancel</button>
+                <button class="btn-action btn-print" onclick="window.print()">
+                    <i class="fa-solid fa-print"></i> Download / Print PDF
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. Background Grid Telemetry ---
+        const canvas = document.getElementById('telemetry-canvas');
+        const ctx = canvas.getContext('2d');
+        let scanLineY = 0;
+        let pulseSpeed = 2;
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        function drawGrid() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const isDark = document.body.getAttribute('data-theme') === 'dark';
+            ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)';
+            ctx.lineWidth = 1;
+            
+            // Grid
+            for (let i = 0; i < canvas.width; i += 40) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, canvas.height); ctx.stroke(); }
+            for (let i = 0; i < canvas.height; i += 40) { ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(canvas.width, i); ctx.stroke(); }
+
+            // Scanner Line
+            const activeColor = getComputedStyle(document.body).getPropertyValue('--active-color').trim();
+            ctx.fillStyle = activeColor;
+            ctx.globalAlpha = 0.15;
+            ctx.fillRect(0, scanLineY, canvas.width, 4);
+            ctx.globalAlpha = 1.0;
+            
+            scanLineY += pulseSpeed;
+            if (scanLineY > canvas.height) scanLineY = 0;
+
+            requestAnimationFrame(drawGrid);
+        }
+        drawGrid();
+
+        // --- 2. Audio & Theme ---
+        let audioCtx = null;
+        let audioOn = false;
+
+        function toggleAudio() {
+            audioOn = !audioOn;
+            const btn = document.getElementById('audio-btn');
+            if (audioOn) {
+                btn.innerHTML = '<i class="fa-solid fa-volume-high"></i>';
+                btn.style.color = 'var(--primary)';
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                beep();
+            } else {
+                btn.innerHTML = '<i class="fa-solid fa-volume-xmark"></i>';
+                btn.style.color = 'var(--text-main)';
+            }
+        }
+
+        function beep() {
+            if (!audioOn || !audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.frequency.setValueAtTime(400, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+            setTimeout(beep, 1500 / pulseSpeed);
+        }
+
+        function toggleTheme() {
+            const body = document.body;
+            const btn = document.getElementById('theme-btn');
+            if (body.getAttribute('data-theme') === 'dark') {
+                body.removeAttribute('data-theme');
+                btn.innerHTML = '<i class="fa-solid fa-moon"></i>';
+            } else {
+                body.setAttribute('data-theme', 'dark');
+                btn.innerHTML = '<i class="fa-solid fa-sun"></i>';
+            }
+        }
+
+        // --- 3. ML Evaluation Logic ---
+        function loadPreset(patient) {
+            const data = {
+                'jdoe': { name: 'John Doe', sex: 'Male', age: 29, bmi: 22.0, bp: 110, chol: 170, glu: 88, sym: 'none' },
+                'msmith': { name: 'Mary Smith', sex: 'Female', age: 55, bmi: 31.5, bp: 135, chol: 215, glu: 165, sym: 'frequent_urination' },
+                'rcruz': { name: 'Robert Cruz', sex: 'Male', age: 68, bmi: 34.0, bp: 180, chol: 290, glu: 205, sym: 'chest_pain' }
+            };
+            const p = data[patient];
+            document.getElementById('pName').value = p.name;
+            document.getElementById('pSex').value = p.sex;
+            document.getElementById('age').value = p.age;
+            document.getElementById('bmi').value = p.bmi;
+            document.getElementById('bp').value = p.bp;
+            document.getElementById('chol').value = p.chol;
+            document.getElementById('glu').value = p.glu;
+            document.getElementById('symptom').value = p.sym;
+            evaluateRisk();
+        }
+
+        function evaluateRisk() {
+            // Get values
+            const name = document.getElementById('pName').value || 'Unknown Patient';
+            const sex = document.getElementById('pSex').value;
+            const age = parseFloat(document.getElementById('age').value);
+            const bmi = parseFloat(document.getElementById('bmi').value);
+            const bp = parseFloat(document.getElementById('bp').value);
+            const chol = parseFloat(document.getElementById('chol').value);
+            const glu = parseFloat(document.getElementById('glu').value);
+            const symptom = document.getElementById('symptom').value;
+
+            // Symptom Matrix
+            const sMatrix = {
+                'none': { w: 0, d: 'General Cardiovascular Health' },
+                'chest_pain': { w: 35, d: 'Coronary Artery Disease / AMI' },
+                'shortness_breath': { w: 25, d: 'Cardiopulmonary Insufficiency' },
+                'frequent_urination': { w: 30, d: 'Type 2 Diabetes Mellitus' },
+                'dizziness': { w: 20, d: 'Hypertension / Arrhythmia' }
+            };
+            const sym = sMatrix[symptom];
+
+            // Sex Modifier (Mock demographic weight)
+            const sexMod = (sex === 'Male') ? 2 : (sex === 'Female' ? 0 : 1);
+
+            // Logit Model
+            const logit = -8.5 + (0.04 * age) + (0.08 * bmi) + (0.02 * bp) + (0.01 * chol) + (0.025 * glu) + (sexMod * 0.1);
+            const prob = 1 / (1 + Math.exp(-logit));
+            let logScore = Math.round((prob * 100 + sym.w) * 10) / 10;
+            logScore = Math.min(logScore, 99.9);
+
+            // Random Forest Model
+            let rfScore = ((0.35*(age/120)) + (0.25*(bmi/60)) + (0.20*(bp/250)) + (0.10*(glu/400)) + (0.10*(sym.w/35))) * 100 * 1.15;
+            rfScore = Math.min(Math.round(rfScore * 10) / 10, 99.9);
+
+            // Decision Tree
+            let dtResult = 'Low Risk';
+            if (glu > 140 || symptom === 'frequent_urination' || bp > 160) dtResult = 'High Risk';
+            else if (bmi > 30 || bp > 130 || chol > 240) dtResult = 'Moderate Risk';
+
+            // Composite
+            const finalScore = Math.round((logScore + rfScore) / 2);
+
+            // Update UI
+            document.getElementById('main-score').textContent = finalScore + '%';
+            document.getElementById('main-disease').textContent = sym.d;
+            
+            document.getElementById('txt-log').textContent = logScore + '%';
+            document.getElementById('bar-log').style.width = logScore + '%';
+            
+            document.getElementById('txt-rf').textContent = rfScore + '%';
+            document.getElementById('bar-rf').style.width = rfScore + '%';
+            
+            document.getElementById('txt-dt').textContent = dtResult;
+
+            // Update Theme state
+            const body = document.body;
+            body.classList.remove('theme-risk-low', 'theme-risk-moderate', 'theme-risk-high');
+            let status = '';
+
+            if (finalScore < 35) {
+                body.classList.add('theme-risk-low');
+                status = 'Low Risk Profile'; pulseSpeed = 1;
+            } else if (finalScore <= 65) {
+                body.classList.add('theme-risk-moderate');
+                status = 'Moderate Risk Profile'; pulseSpeed = 2;
+            } else {
+                body.classList.add('theme-risk-high');
+                status = 'Critical Risk Profile'; pulseSpeed = 4;
+            }
+            document.getElementById('main-status').textContent = status;
+        }
+
+        // --- 4. PDF Generation Logic ---
+        function openPDF() {
+            // Check if form is filled
+            if(!document.getElementById('pName').value || !document.getElementById('age').value) {
+                alert("Please run an evaluation first."); return;
+            }
+
+            // Meta Info
+            document.getElementById('doc-id').textContent = `RPT-${Math.floor(Math.random()*900000+100000)}`;
+            const now = new Date();
+            document.getElementById('doc-date').textContent = now.toISOString().split('T')[0];
+            document.getElementById('doc-time').textContent = now.toTimeString().split(' ')[0];
+
+            // Dossier
+            document.getElementById('doc-name').textContent = document.getElementById('pName').value;
+            document.getElementById('doc-age').textContent = document.getElementById('age').value;
+            document.getElementById('doc-sex').textContent = document.getElementById('pSex').value;
+
+            // Table Data
+            const bmi = document.getElementById('bmi').value;
+            const bp = document.getElementById('bp').value;
+            const chol = document.getElementById('chol').value;
+            const glu = document.getElementById('glu').value;
+            
+            document.getElementById('doc-bmi').textContent = bmi + ' kg/m²';
+            document.getElementById('flag-bmi').textContent = bmi > 24.9 ? (bmi > 30 ? 'Obese' : 'Overweight') : 'Normal';
+            
+            document.getElementById('doc-bp').textContent = bp + ' mmHg';
+            document.getElementById('flag-bp').textContent = bp > 120 ? (bp > 140 ? 'High' : 'Elevated') : 'Normal';
+            
+            document.getElementById('doc-chol').textContent = chol + ' mg/dL';
+            document.getElementById('flag-chol').textContent = chol >= 200 ? 'High' : 'Normal';
+            
+            document.getElementById('doc-glu').textContent = glu + ' mg/dL';
+            document.getElementById('flag-glu').textContent = glu >= 100 ? (glu >= 126 ? 'Diabetic' : 'Pre-diabetic') : 'Normal';
+
+            const symDrop = document.getElementById('symptom');
+            document.getElementById('doc-sym').textContent = symDrop.options[symDrop.selectedIndex].text;
+
+            // Models
+            document.getElementById('doc-m-log').textContent = document.getElementById('txt-log').textContent;
+            document.getElementById('doc-m-rf').textContent = document.getElementById('txt-rf').textContent;
+            document.getElementById('doc-m-dt').textContent = document.getElementById('txt-dt').textContent;
+
+            document.getElementById('doc-conclusion').textContent = document.getElementById('main-status').textContent;
+            document.getElementById('doc-disease').textContent = document.getElementById('main-disease').textContent;
+            document.getElementById('doc-final-score').textContent = document.getElementById('main-score').textContent;
+
+            // Show Modal
+            document.getElementById('pdf-modal').style.display = 'flex';
+        }
+
+        function closePDF() {
+            document.getElementById('pdf-modal').style.display = 'none';
+        }
+
+        // Initialize default empty state theme
+        document.body.classList.add('theme-risk-low');
+    </script>
+</body>
+</html>
